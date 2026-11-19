@@ -1,3 +1,4 @@
+import base64
 import io
 import os
 import pandas as pd
@@ -7,7 +8,7 @@ from insights import build_kpi_summary, generate_summary
 from chart_query import question_to_spec, validate_spec, build_chart
 import charts as C
 
-st.set_page_config(page_title="AI Business Insights Generator", page_icon="📊", layout="wide")
+st.set_page_config(page_title="AI Analytics Copilot", page_icon=os.path.join(os.path.dirname(__file__), "assets", "logo.png"), layout="wide")
 
 
 def show(fig, where=st):
@@ -29,7 +30,7 @@ if "dark_mode" not in st.session_state:
 
 title_col, theme_col = st.columns([5, 1], vertical_alignment="center")
 with theme_col:
-    st.toggle("🌙 Dark", key="dark_mode", help="Switch between light and dark mode")
+    st.toggle(":material/dark_mode: Dark", key="dark_mode", help="Switch between light and dark mode")
 
 wanted = "dark" if st.session_state.dark_mode else "light"
 if st._config.get_option("theme.base") != wanted:
@@ -53,7 +54,11 @@ st.html(f"""<style>
 </style>""")
 
 # ---------- Load ----------
-title_col.title("📊 AI Business Insights Generator")
+LOGO = base64.b64encode(open(os.path.join(os.path.dirname(__file__), "assets", "logo.svg"), "rb").read()).decode()
+title_col.html(f"""<div style="display:flex;align-items:center;gap:14px;margin:8px 0 4px">
+  <img src="data:image/svg+xml;base64,{LOGO}" width="74" height="62" alt="logo">
+  <span style="font-size:2.3rem;font-weight:700;letter-spacing:-0.02em;line-height:1.1">AI Analytics Copilot</span>
+</div>""")
 st.caption("Upload a sales or business file (CSV or Excel) to get a cleaned dataset, an interactive dashboard, "
            "answers to key business questions, an AI executive summary and charts on demand.")
 
@@ -138,7 +143,8 @@ hierarchy = C.find_hierarchy(df, category_cols)
 growth = kpis.get("growth")
 
 tab_dash, tab_questions, tab_ai, tab_ask, tab_quality = st.tabs(
-    ["📊 Dashboard", "❓ Business questions", "🤖 AI summary", "💬 Ask your data", "🧹 Data quality"]
+    [":material/dashboard: Dashboard", ":material/help: Business questions", ":material/auto_awesome: AI summary",
+     ":material/chat: Ask your data", ":material/cleaning_services: Data quality"]
 )
 
 
@@ -272,7 +278,7 @@ with tab_dash:
     else:
         st.caption("Tip: create a chart in **Ask your data** and add it to this dashboard.")
 
-    st.download_button("⬇️ Download dashboard (HTML)", export_html(), file_name="dashboard.html", mime="text/html")
+    st.download_button("Download dashboard (HTML)", export_html(), icon=":material/download:", file_name="dashboard.html", mime="text/html")
 
 
 # ---------- Business questions ----------
@@ -403,9 +409,9 @@ with tab_ask:
                     st.session_state.pinned.append(chart)
 
             if spec in st.session_state.pinned:
-                st.success("✅ On your dashboard. Open the Dashboard tab and scroll to **Your pinned charts**.")
+                st.success("On your dashboard. Open the Dashboard tab and scroll to **Your pinned charts**.")
             else:
-                st.button("📌 Add to dashboard", on_click=pin)
+                st.button("Add to dashboard", icon=":material/push_pin:", on_click=pin)
             with st.expander("How this chart was built"):
                 st.json(spec)
         except ValueError as e:
