@@ -131,4 +131,4 @@ India state boundaries: [DataMeet India](https://github.com/datameet/maps) commu
 
 ---
 
-Built by **Vaishnavi Tikke** · [LinkedIn](https://www.linkedin.com/in/vaishnavi-tikke)
+Built by **Vaibhavi Tikke** · [LinkedIn](https://www.linkedin.com/in/vaibhavi-tikke-0a3bb4285/)
