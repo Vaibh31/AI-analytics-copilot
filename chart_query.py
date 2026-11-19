@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_groq import ChatGroq
 import insights  # loads the API key from .env
@@ -159,8 +160,7 @@ def build_chart(spec, df, date_col, metric_col, location=None):
             fig = px.line(result, x="period", y=y, color=color, markers=True)
         else:
             result = aggregate(data, group, y, agg)
-            fig = px.line(x=result.index, y=result.values, markers=True, color_discrete_sequence=[C.blue()],
-                          labels={"x": "period", "y": y})
+            fig = C.trend_line(result, y)  # same gradient line as the dashboard
     elif color:
         fig = C.stacked_bar(data, x, color, y)
     else:
@@ -169,10 +169,17 @@ def build_chart(spec, df, date_col, metric_col, location=None):
             result = result.head(int(spec["top_n"]))
         result = result.sort_values()
         label = f"% of total {y}" if agg == "percent" else f"{agg} of {y}" if agg != "count" else "count"
-        fig = px.bar(x=result.values, y=result.index.astype(str), orientation="h",
-                     color_discrete_sequence=[C.blue()], labels={"x": label, "y": x},
-                     text=[f"{v}%" if agg == "percent" else C.compact(v) for v in result.values])
-        fig.update_traces(textposition="outside", cliponaxis=False)
-        fig.update_xaxes(range=[min(0, result.min() * 1.15), result.max() * 1.15])  # room for the value labels
+        low, high = result.min(), result.max()
+        # Same gradient bars as the dashboard: bigger value = stronger colour
+        fig = go.Figure(go.Bar(
+            x=result.values, y=result.index.astype(str), orientation="h",
+            marker=dict(color=C.bar_colours(result.values, result.index)),
+            text=[f"{v}%" if agg == "percent" else C.compact(v) for v in result.values],
+            textposition="outside", cliponaxis=False,
+            hovertemplate="%{y}: <b>%{x:,.2f}</b><extra></extra>",
+        ))
+        fig.update_xaxes(title=label, range=[min(0, low * 1.15), high * 1.15])  # room for the value labels
+        fig.update_yaxes(title=x)
+        fig.update_layout(height=max(320, 130 + 36 * len(result)))
 
     return C.style(fig, title, height=fig.layout.height or 400)

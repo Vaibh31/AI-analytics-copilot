@@ -1,6 +1,10 @@
 from functools import lru_cache
 import pandas as pd
 
+# Label given to missing text values during cleaning. It is kept in totals and shares
+# (so they still add up to 100%), but never reported as a "top" or "strongest" group.
+PLACEHOLDER = "Unknown"
+
 
 # Step 1: Load the file (CSV or Excel)
 def load_data(file):
@@ -66,8 +70,8 @@ def clean_data(df):
                 df[col] = df[col].fillna(df[col].median())
                 log.append(f"Filled {missing} missing values in '{col}' with the median")
         else:
-            df[col] = df[col].fillna("Unknown")
-            log.append(f"Filled {missing} missing values in '{col}' with 'Unknown'")
+            df[col] = df[col].fillna(PLACEHOLDER)
+            log.append(f"Filled {missing} missing values in '{col}' with '{PLACEHOLDER}'")
     return df, log
 
 
@@ -221,10 +225,11 @@ def calculate_kpis(df, date_col, metric_col, category_cols):
                 )
                 if y1 in pivot and y2 in pivot:
                     change = ((pivot[y2] - pivot[y1]) / pivot[y1] * 100).dropna().round(1)
+                    change = change.drop(PLACEHOLDER, errors="ignore")  # not a real group
                     kpis["movers"][col] = change.sort_values(ascending=False)
 
     kpis["top_by_category"] = {
-        col: df.groupby(col)[metric_col].sum().sort_values(ascending=False).head(5)
+        col: df.groupby(col)[metric_col].sum().drop(PLACEHOLDER, errors="ignore").sort_values(ascending=False).head(5)
         for col in category_cols
     }
 
@@ -239,7 +244,7 @@ def calculate_kpis(df, date_col, metric_col, category_cols):
         # Prefer a product-like column; otherwise the most detailed category column
         product_like = [c for c in category_cols if any(w in c.lower() for w in ["product", "item", "sku"])]
         detail_col = product_like[0] if product_like else max(category_cols, key=lambda c: df[c].nunique())
-        totals = df.groupby(detail_col)[metric_col].sum().sort_values(ascending=False)
+        totals = df.groupby(detail_col)[metric_col].sum().drop(PLACEHOLDER, errors="ignore").sort_values(ascending=False)
         top_n = max(1, round(len(totals) * 0.2))
         kpis["concentration"] = {
             "column": detail_col,

@@ -115,6 +115,24 @@ def ramp_colour(value, low, high, start=0.2):
                              [start + (1 - start) * position])[0]
 
 
+def bar_colours(values, labels):
+    """One gradient step per bar, by rank: the biggest bar gets the strongest colour, the
+    smallest the lightest, evenly spaced. Shading by rank (not raw value) keeps bars visibly
+    different even when their values are close. A missing-data group like "Unknown" is grey."""
+    series = pd.Series(list(values), index=[str(l) for l in labels])
+    real = series[series.index != "Unknown"]
+    ranks = real.rank(method="first") - 1
+    n = max(len(real) - 1, 1)
+    colours = []
+    for i, label in enumerate(series.index):
+        if label == "Unknown":
+            colours.append(MUTED[MODE])
+        else:
+            position = 1.0 if len(real) == 1 else ranks.iloc[list(real.index).index(label)] / n
+            colours.append(ramp_colour(position, 0, 1))
+    return colours
+
+
 def ink_for(colour):
     """Dark text on bright colours (like #1ed7fc), white text on deep ones."""
     from plotly.colors import hex_to_rgb, unlabel_rgb
@@ -193,7 +211,7 @@ def share_bar(share, col, metric, top=10):
     low, high = top_share.min(), top_share.max()
     fig = go.Figure(go.Bar(
         x=top_share.values, y=top_share.index.astype(str), orientation="h",
-        marker=dict(color=[ramp_colour(v, low, high) for v in top_share.values]),  # bigger share = stronger blue
+        marker=dict(color=bar_colours(top_share.values, top_share.index)),  # bigger share = stronger colour
         text=[f"{v}%" for v in top_share.values], textposition="outside", cliponaxis=False,
         hovertemplate="%{y}: <b>%{x}%</b><extra></extra>",
     ))

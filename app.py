@@ -101,7 +101,7 @@ if st.session_state.get("loaded_file") != source_name:
     st.session_state.loaded_file = source_name
     st.session_state.summaries = {}
     st.session_state.pinned = []
-    st.session_state.last_chart = None
+    st.session_state.history = []
 
 # ---------- Filters (sidebar) - apply to every tab ----------
 st.sidebar.header("Filters")
@@ -381,44 +381,59 @@ with tab_ai:
 
 
 # ---------- Ask your data ----------
+st.session_state.setdefault("history", [])
+
+
+def pin(chart):
+    if chart not in st.session_state.pinned:
+        st.session_state.pinned.append(chart)
+
+
 with tab_ask:
     st.write("Ask a question and get a chart. Examples: *monthly revenue for Electronics in 2025*, "
              "*revenue by state on a map*, *top 5 products by units in the North region*, "
              "*pie chart of sales by category*, *spread of revenue by category*.")
-    question = st.text_input("Your question", placeholder="e.g. Which channel had the most orders in 2025?")
 
-    if st.button("Create chart") and question:
+    # A form submits when you press Enter, and clears the box afterwards
+    with st.form("ask_form", clear_on_submit=True, border=False):
+        q_col, b_col = st.columns([6, 1], vertical_alignment="bottom")
+        question = q_col.text_input("Your question", placeholder="e.g. Which channel had the most orders in 2025?")
+        submitted = b_col.form_submit_button("Create chart", icon=":material/insights:", width="stretch")
+
+    if submitted and question.strip():
         with st.spinner("Building chart..."):
             try:
                 spec = validate_spec(question_to_spec(question, df, date_col, metric_col, location), df, location)
                 build_chart(spec, df, date_col, metric_col, location)  # check it works before saving
-                st.session_state.last_chart = spec
+                st.session_state.history.insert(0, {"question": question.strip(), "spec": spec})
             except ValueError as e:
-                st.session_state.last_chart = None
-                st.warning(f"Couldn't build that chart: {e}. Try rephrasing using the column names.")
+                st.warning(f"Couldn't build a chart for *{question}*: {e}. Try rephrasing using the column names.")
             except Exception as e:
-                st.session_state.last_chart = None
                 st.error(f"Something went wrong: {e}")
 
-    spec = st.session_state.last_chart
-    if spec:
+    # All charts asked for so far, newest first
+    if st.session_state.history:
+        head, clear = st.columns([6, 1], vertical_alignment="center")
+        head.caption(f"{len(st.session_state.history)} chart(s) this session · newest first")
+        if clear.button("Clear all", icon=":material/delete:", width="stretch"):
+            st.session_state.history = []
+            st.rerun()
+
+    for i, item in enumerate(st.session_state.history):
+        spec = item["spec"]
+        st.markdown(f"**Q: {item['question']}**")
         try:
             show(build_chart(spec, df, date_col, metric_col, location))
-            # on_click runs BEFORE the page redraws, so the Dashboard tab
-            # (drawn earlier on the page) already includes the new chart
-            def pin(chart=spec):
-                if chart not in st.session_state.pinned:
-                    st.session_state.pinned.append(chart)
-
-            if spec in st.session_state.pinned:
-                st.success("On your dashboard. Open the Dashboard tab and scroll to **Your pinned charts**.")
-            else:
-                st.button("Add to dashboard", icon=":material/push_pin:", on_click=pin)
-            with st.expander("How this chart was built"):
-                st.json(spec)
         except ValueError as e:
             st.warning(f"This chart doesn't fit the current filters: {e}.")
-
+            continue
+        c1, c2 = st.columns([1, 3], vertical_alignment="center")
+        if spec in st.session_state.pinned:
+            c1.success("On your dashboard", icon=":material/check:")
+        else:
+            c1.button("Add to dashboard", icon=":material/push_pin:", key=f"pin_{i}", on_click=pin, args=(spec,))
+        with c2.expander("How this chart was built"):
+            st.json(spec)
 
 # ---------- Data quality ----------
 with tab_quality:
