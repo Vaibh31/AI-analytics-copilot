@@ -1,4 +1,6 @@
 import base64
+import html
+import re
 import io
 import os
 import pandas as pd
@@ -7,6 +9,7 @@ from analysis import load_data, data_quality_report, clean_data, detect_columns,
 from insights import build_kpi_summary, generate_summary
 from chart_query import question_to_spec, validate_spec, build_chart
 import charts as C
+from decisions import build_cards
 
 ICON_PATH = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
 st.set_page_config(page_title="AI Analytics Copilot",
@@ -20,6 +23,18 @@ def show(fig, where=st):
     n = st.session_state["_chart_no"]
     fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")  # let the card show through
     with where.container(border=False, key=f"card_{n}"):
+        st.plotly_chart(fig, width="stretch", config={"displaylogo": False}, key=f"chart_{n}")
+
+
+def show_card(card, where=st):
+    """A dashboard card: the business question, the takeaway in words, then the chart."""
+    st.session_state["_chart_no"] = st.session_state.get("_chart_no", 0) + 1
+    n = st.session_state["_chart_no"]
+    fig = card["fig"]
+    fig.update_layout(title_text="", margin=dict(t=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+    with where.container(border=False, key=f"card_{n}"):
+        st.markdown(f"#### {card['question']}")
+        st.markdown(card["takeaway"])
         st.plotly_chart(fig, width="stretch", config={"displaylogo": False}, key=f"chart_{n}")
 
 
@@ -151,27 +166,9 @@ tab_dash, tab_questions, tab_ai, tab_ask, tab_quality = st.tabs(
 
 
 # ---------- Dashboard ----------
-def dashboard_figures():
-    figs = []
-    if "monthly_trend" in kpis:
-        figs.append(C.trend_line(kpis["monthly_trend"], metric_col))
-    if location:
-        map_fig = C.location_map(df, location, metric_col)
-        if map_fig is not None:
-            map_fig.update_layout(meta="map")  # tag it so the map can get a full-width row
-            figs.append(map_fig)
-    if category_cols:
-        main_cat = hierarchy[0] if hierarchy else min(category_cols, key=lambda c: df[c].nunique())
-        figs.append(C.pie(df.groupby(main_cat)[metric_col].sum().sort_values(ascending=False), main_cat, metric_col))
-    if hierarchy:
-        figs.append(C.treemap(df, hierarchy[0], hierarchy[1], metric_col))
-    if growth and category_cols:
-        wf_col = hierarchy[0] if hierarchy else min(category_cols, key=lambda c: df[c].nunique())
-        figs.append(C.waterfall(df, date_col, metric_col, wf_col, growth["from_year"], growth["to_year"]))
-    small = sorted(category_cols, key=lambda c: df[c].nunique())
-    if len(small) >= 2:
-        figs.append(C.stacked_bar(df, small[0], small[1], metric_col))
-    return figs
+def dashboard_cards():
+    # The most decision-relevant charts for THIS data, each with its question and takeaway
+    return build_cards(df, date_col, metric_col, category_cols, location, kpis)
 
 
 def pinned_figures():
@@ -190,24 +187,28 @@ def export_html(plotlyjs="cdn"):
     old_mode = C.MODE
     C.MODE = "light"  # a downloaded report opens on a white page
     try:
-        figs = dashboard_figures() + pinned_figures()
+        items = dashboard_cards() + [dict(question="", takeaway="", fig=f, wide=True) for f in pinned_figures()]
     finally:
         C.MODE = old_mode
 
     cards = []
-    for i, fig in enumerate(figs):
+    for i, item in enumerate(items):
+        fig = item["fig"]
+        if item["question"]:
+            fig.update_layout(title_text="")  # the question above the chart is the title
         fig.update_layout(
             template="plotly_white", paper_bgcolor="white", plot_bgcolor="white",
             font=dict(family="Segoe UI, Arial, sans-serif", size=12, color="#1f2937"),
-            margin=dict(l=20, r=20, t=60, b=20), autosize=True, width=None,
+            margin=dict(l=20, r=20, t=60 if not item["question"] else 20, b=20), autosize=True, width=None,
         )
         fig.update_xaxes(automargin=True, title_standoff=12)
         fig.update_yaxes(automargin=True, title_standoff=12)
         chart = fig.to_html(full_html=False, include_plotlyjs=plotlyjs if i == 0 else False,
                             default_width="100%", config={"responsive": True, "displaylogo": False})
-        pinned_chart = st.session_state.pinned and i >= len(figs) - len(st.session_state.pinned)
-        wide = " wide" if pinned_chart or fig.layout.meta == "map" else ""
-        cards.append(f"<div class='card{wide}'>{chart}</div>")
+        takeaway = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(item["takeaway"]))
+        header = f"<h3>{html.escape(item['question'])}</h3><p class='take'>{takeaway}</p>" if item["question"] else ""
+        wide = " wide" if item.get("wide") else ""
+        cards.append(f"<div class='card{wide}'>{header}{chart}</div>")
 
     growth_text = (f"<div class='kpi'><span>{growth['to_year']} vs {growth['from_year']}</span>"
                    f"<b>{growth['growth_pct']}%</b></div>") if growth else ""
@@ -226,6 +227,8 @@ def export_html(plotlyjs="cdn"):
  .grid {{ display:grid; grid-template-columns:repeat(auto-fill,minmax(480px,1fr)); gap:16px; }}
  .card {{ background:white; border-radius:12px; padding:8px; box-shadow:0 1px 3px rgba(0,0,0,.08); min-width:0; }}
  .card.wide {{ grid-column:1/-1; }}
+ .card h3 {{ margin:10px 12px 2px; font-size:17px; }}
+ .take {{ margin:0 12px 4px; color:#4b5563; font-size:14px; line-height:1.45; }}
  @media (max-width:560px) {{ .grid {{ grid-template-columns:1fr; }} body {{ padding:12px; }} }}
 </style></head><body><div class="wrap">
 <h1>Business dashboard</h1><div class="sub">Source: {source_name}{filters_text}</div>
@@ -257,17 +260,25 @@ with tab_dash:
         share = kpis["share_by_category"][top_col]
         k4.metric(f"Top {top_col}", str(share.index[0]), f"{share.iloc[0]}% of total", delta_color="off", border=True)
 
-    figs = dashboard_figures()
-    map_figs = [f for f in figs if f.layout.meta == "map"]
-    grid = [f for f in figs if f.layout.meta != "map"]
-    for i in range(0, len(grid), 2):
-        cols = st.columns(2)
-        for col, fig in zip(cols, grid[i:i + 2]):
-            show(fig, col)
-        if i == 0 and map_figs:  # the map gets its own full-width row, so it can be bigger
-            show(map_figs[0])
-    if not grid and map_figs:
-        show(map_figs[0])
+    st.caption("Charts are picked for this data: each answers a business question, most important first.")
+    cards = dashboard_cards()
+    row = []
+    for card in cards + [None]:  # None flushes the last half-filled row
+        if card is None or card.get("wide"):
+            if row:
+                cols = st.columns(2)
+                for col, c in zip(cols, row):
+                    show_card(c, col)
+                row = []
+            if card is not None:
+                show_card(card)
+        else:
+            row.append(card)
+            if len(row) == 2:
+                cols = st.columns(2)
+                for col, c in zip(cols, row):
+                    show_card(c, col)
+                row = []
 
     pinned = pinned_figures()
     if st.session_state.pinned:

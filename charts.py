@@ -320,6 +320,20 @@ def movers_bar(change, col, metric, y1, y2):
     return style(fig, f"Change in {metric} by {col} ({y2} vs {y1})", height=130 + 28 * len(data))
 
 
+def driver_bar(corr, metric):
+    """How strongly each other number column moves with the metric (correlation, -1 to +1)."""
+    data = corr.sort_values()
+    fig = go.Figure(go.Bar(
+        x=data.values, y=data.index.astype(str), orientation="h",
+        marker_color=[up_colour() if v >= 0 else down_colour() for v in data.values],
+        text=[f"{v:+.2f}" for v in data.values], textposition="outside", cliponaxis=False,
+        hovertemplate="%{y}: <b>%{x:+.2f}</b><extra></extra>",
+    ))
+    fig.update_xaxes(title=f"correlation with {metric}", range=[-1.15, 1.15], zeroline=True,
+                     zerolinewidth=1.5, showgrid=False)
+    return style(fig, f"What moves with {metric}", height=150 + 34 * len(data))
+
+
 def waterfall(df, date_col, metric, col, y1, y2):
     dates = pd.to_datetime(df[date_col], errors="coerce")
     by_year = df.assign(_year=dates.dt.year).pivot_table(index=col, columns="_year", values=metric, aggfunc="sum").fillna(0)

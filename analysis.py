@@ -72,14 +72,66 @@ def clean_data(df):
         else:
             df[col] = df[col].fillna(PLACEHOLDER)
             log.append(f"Filled {missing} missing values in '{col}' with '{PLACEHOLDER}'")
+
+    df, date_log = parse_dates(df)
+    df, metric_log = add_revenue(df)
+    return df, log + date_log + metric_log
+
+
+DATE_WORDS = ["date", "time", "day", "month", "period", "timestamp"]
+DATE_FORMATS = ["%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d.%m.%Y",
+                "%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M", "%d %b %Y", "%b %d, %Y"]
+
+
+def parse_dates(df):
+    """Turn date-like text columns into real dates, handling day-first (15-03-2024) and
+    month-first (03-15-2024) files."""
+    log = []
+    for col in df.columns:
+        if not any(w in col.lower() for w in DATE_WORDS) or pd.api.types.is_numeric_dtype(df[col]):
+            continue
+        if pd.api.types.is_datetime64_any_dtype(df[col]):
+            continue
+        text = df[col].astype(str).str.strip()
+        # Each format is applied to the WHOLE column, so 05-03-2024 can't be read as May in
+        # one row and 5 March in another. Keep the format that reads the most values;
+        # on a tie (e.g. every day is 12 or less) keep the one giving the shorter, more plausible span.
+        tries = [pd.to_datetime(text, errors="coerce", format=f) for f in DATE_FORMATS]
+        tries.append(pd.to_datetime(text, errors="coerce"))  # let pandas infer anything else
+        def quality(t):
+            span = (t.max() - t.min()).days if t.notna().any() else 0
+            return (round(t.notna().mean(), 3), -span)
+        best = max(tries, key=quality)
+        if best.notna().mean() > 0.8:
+            df[col] = best
+            log.append(f"Read '{col}' as dates")
     return df, log
+
+
+QTY_WORDS = ["quantity", "qty", "units", "unit sold", "units sold", "volume"]
+PRICE_WORDS = ["price", "rate", "unit cost", "cost per"]
+
+
+def add_revenue(df):
+    """If there's no revenue/sales column but there is a quantity and a price, create
+    Revenue = quantity x price. Adding up prices alone would be meaningless."""
+    names = {c: c.lower().replace("_", " ") for c in df.columns}
+    numeric = [c for c in df.columns if pd.api.types.is_numeric_dtype(df[c])]
+    if any(any(k in names[c] for k in ["revenue", "sales", "amount", "total"]) for c in numeric):
+        return df, []
+    qty = next((c for c in numeric if any(w in names[c] for w in QTY_WORDS)), None)
+    price = next((c for c in numeric if any(w in names[c] for w in PRICE_WORDS) and c != qty), None)
+    if qty and price:
+        df["Revenue"] = (df[qty] * df[price]).round(2)
+        return df, [f"Created 'Revenue' = '{qty}' × '{price}'"]
+    return df, []
 
 
 # Step 4: Detect the important columns automatically
 def detect_columns(df):
     # Date column: name contains "date", and the values can be read as dates
-    date_col = None
-    for col in df.columns:
+    date_col = next((c for c in df.columns if pd.api.types.is_datetime64_any_dtype(df[c])), None)
+    for col in ([] if date_col else df.columns):
         if "date" in col.lower():
             parsed = pd.to_datetime(df[col], errors="coerce")
             if parsed.notna().mean() > 0.8:
@@ -101,7 +153,9 @@ def detect_columns(df):
         if metric_col:
             break
     if metric_col is None and numeric_cols:
-        metric_col = max(numeric_cols, key=lambda c: df[c].sum())
+        # Prices and rates don't add up meaningfully, so prefer other columns (e.g. quantity)
+        addable = [c for c in numeric_cols if not any(w in c.lower() for w in PRICE_WORDS)] or numeric_cols
+        metric_col = max(addable, key=lambda c: df[c].sum())
 
     # Category columns: text columns with a small number of unique values (2-20)
     category_cols = [
