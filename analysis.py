@@ -80,7 +80,8 @@ def clean_data(df):
 
 DATE_WORDS = ["date", "time", "day", "month", "period", "timestamp"]
 DATE_FORMATS = ["%Y-%m-%d", "%d-%m-%Y", "%m-%d-%Y", "%d/%m/%Y", "%m/%d/%Y", "%Y/%m/%d", "%d.%m.%Y",
-                "%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M", "%d %b %Y", "%b %d, %Y"]
+                "%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M", "%m/%d/%Y %H:%M", "%d/%m/%Y %H:%M",
+                "%d %b %Y", "%b %d %Y", "%b %d, %Y", "%d %B %Y", "%B %d %Y", "%B %d, %Y", "%d-%b-%Y"]
 
 
 def parse_dates(df):
@@ -93,18 +94,26 @@ def parse_dates(df):
         if pd.api.types.is_datetime64_any_dtype(df[col]):
             continue
         text = df[col].astype(str).str.strip()
-        # Each format is applied to the WHOLE column, so 05-03-2024 can't be read as May in
-        # one row and 5 March in another. Keep the format that reads the most values;
-        # on a tie (e.g. every day is 12 or less) keep the one giving the shorter, more plausible span.
         tries = [pd.to_datetime(text, errors="coerce", format=f) for f in DATE_FORMATS]
-        tries.append(pd.to_datetime(text, errors="coerce"))  # let pandas infer anything else
+        # Rank formats by how many values each reads on its own (on a tie, the shorter, more
+        # plausible date span wins: this decides whether 05-03-2024 is 5 March or May 3).
         def quality(t):
             span = (t.max() - t.min()).days if t.notna().any() else 0
             return (round(t.notna().mean(), 3), -span)
-        best = max(tries, key=quality)
+        ranked = sorted(tries, key=quality, reverse=True)
+        # Then fill row by row: values the main format can't read try the next format, so a
+        # column mixing "2025-3-31" and "Mar 31 2026" is fully understood.
+        best = ranked[0]
+        for t in ranked[1:]:
+            best = best.fillna(t)
+        best = best.fillna(pd.to_datetime(text, errors="coerce", format="mixed"))  # anything else pandas can read
         if best.notna().mean() > 0.8:
             df[col] = best
-            log.append(f"Read '{col}' as dates")
+            formats = sum(1 for t in tries if (t.notna() & ranked[0].isna()).any()) + 1
+            note = f" (found {formats} different date formats)" if formats > 1 else ""
+            unread = int(best.isna().sum())
+            log.append(f"Read '{col}' as dates{note}"
+                       + (f"; {unread} values could not be read and were left blank" if unread else ""))
     return df, log
 
 
