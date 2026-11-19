@@ -1,0 +1,6 @@
+.env
+venv/
+__pycache__/
+desktop.ini
+*.pyc
+eval_results.csv

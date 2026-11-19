@@ -1,0 +1,8 @@
+streamlit>=1.50
+pandas
+plotly>=5.24
+openpyxl
+langchain
+langchain-core
+langchain-groq
+python-dotenv
