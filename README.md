@@ -5,20 +5,15 @@
 <h1 align="center">AI Analytics Copilot</h1>
 
 <p align="center">
-  <b>Upload any business spreadsheet and get, in seconds, a cleaned dataset, a decision-ready dashboard, an AI-written executive summary, and charts from plain-English questions.</b>
+  <b>Upload any business spreadsheet and get a cleaned dataset, a decision-ready dashboard, an AI-written executive summary, and charts from plain-English questions, all in seconds.</b>
 </p>
 
 <p align="center">
-  <a href="https://ai-analytics-copilot.streamlit.app"><img src="https://img.shields.io/badge/▶%20Live%20demo-ai--analytics--copilot.streamlit.app-10A5F5?style=for-the-badge" alt="Live demo"></a>
+  <a href="https://ai-analytics-copilot.streamlit.app"><img src="assets/live-demo.svg" height="52" alt="Try the live app"></a>
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Python-3776AB?logo=python&logoColor=white" alt="Python">
-  <img src="https://img.shields.io/badge/pandas-150458?logo=pandas&logoColor=white" alt="pandas">
-  <img src="https://img.shields.io/badge/Plotly-3F4F75?logo=plotly&logoColor=white" alt="Plotly">
-  <img src="https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white" alt="Streamlit">
-  <img src="https://img.shields.io/badge/LangChain-1C3C3C?logo=langchain&logoColor=white" alt="LangChain">
-  <img src="https://img.shields.io/badge/Groq%20LLM-F55036" alt="Groq">
+  Python · pandas · Plotly · Streamlit · LangChain · Groq
 </p>
 
 ![AI Analytics Copilot dashboard](docs/dashboard-light.png)
